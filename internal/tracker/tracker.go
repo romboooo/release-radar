@@ -15,6 +15,7 @@ type CheckResult struct {
 	Repository store.Repository
 	Release    github.Release
 	Err        error
+	IsNew      bool
 }
 
 func New(repoStore *store.Store) *Service {
@@ -31,14 +32,25 @@ func (s *Service) Check(ctx context.Context) ([]CheckResult, error) {
 	var checks []CheckResult
 
 	for _, repo := range repos {
+		result := CheckResult{Repository: repo}
+
 		release, err := github.FetchLatestRelease(ctx, repo.Owner, repo.Repo)
+		if err != nil {
+			result.Err = err
+			checks = append(checks, result)
+			continue
+		}
 
-		checks = append(checks, CheckResult{
-			Repository: repo,
-			Release:    release,
-			Err:        err,
-		})
+		result.Release = release
+		record := store.ReleaseRecord{
+			GitHubID:    release.ID,
+			TagName:     release.TagName,
+			URL:         release.HTMLURL,
+			PublishedAt: release.PublishedAt,
+		}
 
+		result.IsNew, result.Err = s.Store.SaveRelease(ctx, repo.ID, record)
+		checks = append(checks, result)
 	}
 	return checks, nil
 }

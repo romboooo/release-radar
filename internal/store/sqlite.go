@@ -13,14 +13,47 @@ type Store struct {
 }
 
 type Repository struct {
+	ID    int64
 	Owner string
 	Repo  string
+}
+
+type ReleaseRecord struct {
+	GitHubID    int64
+	TagName     string
+	URL         string
+	PublishedAt string
+}
+
+func (s *Store) SaveRelease(ctx context.Context, repositoryID int64, release ReleaseRecord) (bool, error) {
+	result, err := s.db.ExecContext(ctx, `
+		INSERT INTO releases (repository_id, github_id, tag_name, url, published_at)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(repository_id, github_id) DO NOTHING
+	`,
+		repositoryID,
+		release.GitHubID,
+		release.TagName,
+		release.URL,
+		release.PublishedAt,
+	)
+
+	if err != nil {
+		return false, fmt.Errorf("save release: %w", err)
+	}
+	affectedRows, err := result.RowsAffected()
+
+	if err != nil {
+		return false, fmt.Errorf("check inserted release: %w", err)
+	}
+
+	return affectedRows == 1, nil
 }
 
 func (s *Store) ListRepositories(ctx context.Context) ([]Repository, error) {
 	rows, err := s.db.QueryContext(
 		ctx,
-		"select owner, repo from repositories order by owner,repo",
+		"select id, owner, repo from repositories order by owner,repo",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list repositories: %w", err)
@@ -32,7 +65,7 @@ func (s *Store) ListRepositories(ctx context.Context) ([]Repository, error) {
 
 	for rows.Next() {
 		var r Repository
-		if err := rows.Scan(&r.Owner, &r.Repo); err != nil {
+		if err := rows.Scan(&r.ID, &r.Owner, &r.Repo); err != nil {
 			return nil, err
 		}
 
@@ -70,18 +103,34 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("create repositories table: %w", err)
 	}
 
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS releases (
+			repository_id INTEGER NOT NULL,
+			github_id INTEGER NOT NULL,
+			tag_name TEXT NOT NULL,
+			url TEXT NOT NULL,
+			published_at TEXT NOT NULL,
+			discovered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (repository_id, github_id),
+			FOREIGN KEY (repository_id) REFERENCES repositories(id)
+			)
+	`)
+
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("create releases table: %w", err)
+	}
+
 	return &Store{db: db}, nil
 }
 func (s *Store) AddRepository(ctx context.Context, owner, repo string) error {
 
 	if len(owner) <= 0 {
-		return fmt.Errorf(
-			"empty owner")
+		return fmt.Errorf("empty owner")
 	}
 
 	if len(repo) <= 0 {
-		return fmt.Errorf(
-			"empty repo")
+		return fmt.Errorf("empty repo")
 	}
 
 	_, err := s.db.ExecContext(ctx, "insert into repositories (owner,repo) values (?,?)", owner, repo)

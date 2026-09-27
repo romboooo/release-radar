@@ -62,6 +62,10 @@ func runCheck(ctx context.Context, args []string, service *tracker.Service, out 
 	for _, check := range checkResults {
 
 		var err error
+		status := "already seen"
+		if check.IsNew {
+			status = "new"
+		}
 
 		if check.Err != nil {
 			_, err = fmt.Fprintf(
@@ -72,11 +76,15 @@ func runCheck(ctx context.Context, args []string, service *tracker.Service, out 
 			)
 
 		} else {
+
 			_, err = fmt.Fprintf(
 				out,
-				"repo %s version %s\n",
+				"%s/%s: %s (%s)\n",
+				check.Repository.Owner,
 				check.Repository.Repo,
-				check.Release.TagName)
+				check.Release.TagName,
+				status,
+			)
 
 		}
 
