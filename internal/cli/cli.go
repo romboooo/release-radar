@@ -9,9 +9,10 @@ import (
 	"github.com/romboooo/release-radar/internal/tracker"
 )
 
-func Run(ctx context.Context, args []string, service *tracker.Service, out io.Writer) error {
-	if len(args) != 2 || args[0] != "add" {
-		return fmt.Errorf("usage: radar add owner/repo")
+func runAdd(ctx context.Context, args []string, service *tracker.Service, out io.Writer) error {
+
+	if len(args) != 2 {
+		return fmt.Errorf("Usage: radar add {owner}/{repo}")
 	}
 
 	owner, repo, found := strings.Cut(args[1], "/")
@@ -23,6 +24,87 @@ func Run(ctx context.Context, args []string, service *tracker.Service, out io.Wr
 		return err
 	}
 
-	_, err := fmt.Fprintf(out, "added repository: %s/%s\n", owner, repo)
-	return err
+	if _, err := fmt.Fprintf(out, "Added repository: %s/%s\n", owner, repo); err != nil {
+		return err
+	}
+	return nil
+}
+
+func runList(ctx context.Context, args []string, service *tracker.Service, out io.Writer) error {
+	if len(args) != 1 {
+		return fmt.Errorf("Usage: radar list")
+	}
+	repos, err := service.ListRepositories(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, repo := range repos {
+		if _, err := fmt.Fprintf(out, "%s/%s\n", repo.Owner, repo.Repo); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func runCheck(ctx context.Context, args []string, service *tracker.Service, out io.Writer) error {
+
+	if len(args) != 1 {
+		return fmt.Errorf("Usage: radar check")
+	}
+
+	checkResults, err := service.Check(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, check := range checkResults {
+
+		var err error
+
+		if check.Err != nil {
+			_, err = fmt.Fprintf(
+				out,
+				"repo %s error %v\n",
+				check.Repository.Repo,
+				check.Err,
+			)
+
+		} else {
+			_, err = fmt.Fprintf(
+				out,
+				"repo %s version %s\n",
+				check.Repository.Repo,
+				check.Release.TagName)
+
+		}
+
+		if err != nil {
+			return err
+		}
+
+	}
+
+	return nil
+
+}
+
+func Run(ctx context.Context, args []string, service *tracker.Service, out io.Writer) error {
+	if len(args) == 0 {
+		return fmt.Errorf("error: command should contain arguments")
+	}
+	if args[0] == "" {
+		return fmt.Errorf("error: empty command name")
+	}
+	switch args[0] {
+	case "add":
+		return runAdd(ctx, args, service, out)
+	case "list":
+		return runList(ctx, args, service, out)
+	case "check":
+		return runCheck(ctx, args, service, out)
+	default:
+		return fmt.Errorf("error: invalid command name")
+	}
 }

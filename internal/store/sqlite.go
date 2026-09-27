@@ -17,6 +17,34 @@ type Repository struct {
 	Repo  string
 }
 
+func (s *Store) ListRepositories(ctx context.Context) ([]Repository, error) {
+	rows, err := s.db.QueryContext(
+		ctx,
+		"select owner, repo from repositories order by owner,repo",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list repositories: %w", err)
+	}
+
+	defer rows.Close()
+
+	var repositories []Repository
+
+	for rows.Next() {
+		var r Repository
+		if err := rows.Scan(&r.Owner, &r.Repo); err != nil {
+			return nil, err
+		}
+
+		repositories = append(repositories, r)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return repositories, nil
+}
+
 func Open(path string) (*Store, error) {
 
 	db, err := sql.Open("sqlite", path)
@@ -64,6 +92,7 @@ func (s *Store) AddRepository(ctx context.Context, owner, repo string) error {
 
 	return nil
 }
+
 func (s *Store) Close() error {
 	return s.db.Close()
 }

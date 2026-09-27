@@ -1,6 +1,7 @@
 package github
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -14,7 +15,7 @@ type Release struct {
 	PublishedAt string `json:"published_at"`
 }
 
-func FetchLatestRelease(owner, repo string) (Release, error) {
+func FetchLatestRelease(ctx context.Context, owner, repo string) (Release, error) {
 
 	if len(owner) <= 0 {
 		return Release{}, fmt.Errorf(
@@ -31,15 +32,23 @@ func FetchLatestRelease(owner, repo string) (Release, error) {
 
 	client := &http.Client{Timeout: 5 * time.Second}
 
-	resp, err := client.Get(url)
+	req, err := http.NewRequestWithContext(
+		ctx, http.MethodGet, url, nil,
+	)
+
 	if err != nil {
-		return Release{}, err
+		return Release{}, fmt.Errorf("create request: %w", err)
 	}
 
+	resp, err := client.Do(req)
+
+	if err != nil {
+		return Release{}, fmt.Errorf("fetch release: %w", err)
+	}
 	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
-		return Release{}, fmt.Errorf(
-			"github returned %s", resp.Status)
+		return Release{}, fmt.Errorf("github returned %s", resp.Status)
 	}
 
 	var release Release
@@ -47,7 +56,7 @@ func FetchLatestRelease(owner, repo string) (Release, error) {
 	err = json.NewDecoder(resp.Body).Decode(&release)
 
 	if err != nil {
-		return Release{}, fmt.Errorf("error with request body reading: %v", err)
+		return Release{}, fmt.Errorf("error with request body reading: %w", err)
 	}
 
 	return release, nil
