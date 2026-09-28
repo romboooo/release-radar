@@ -69,7 +69,9 @@ func (s *Service) Check(ctx context.Context) ([]CheckResult, error) {
 	}
 
 	wg.Wait()
-
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	for i := range checks {
 
 		if checks[i].Err != nil {

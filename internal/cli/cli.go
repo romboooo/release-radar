@@ -120,7 +120,8 @@ func runCheck(ctx context.Context, args []string, service *tracker.Service, out 
 		if check.Err != nil {
 			_, err = fmt.Fprintf(
 				out,
-				"repo %s error %v\n",
+				"repo %s/%s error %v\n",
+				check.Repository.Owner,
 				check.Repository.Repo,
 				check.Err,
 			)
