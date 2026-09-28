@@ -31,26 +31,26 @@ func runDelete(ctx context.Context, args []string, service *tracker.Service, out
 	return nil
 }
 
-func runUpdate(ctx context.Context, args []string, service *tracker.Service, out io.Writer) error {
+func runHistory(ctx context.Context, args []string, service *tracker.Service, out io.Writer) error {
 	if len(args) != 1 {
-		return fmt.Errorf("Usage: radar update")
+		return fmt.Errorf("Usage: radar history")
 	}
 
-	updates, err := service.ListUpdates(ctx)
+	history, err := service.ListHistory(ctx)
 
 	if err != nil {
 		return err
 	}
 
-	for _, update := range updates {
+	for _, record := range history {
 
 		if _, err := fmt.Fprintf(out,
 			"%s/%s %s %s %s\n",
-			update.Owner,
-			update.Repo,
-			update.TagName,
-			update.URL,
-			update.PublishedAt,
+			record.Owner,
+			record.Repo,
+			record.TagName,
+			record.URL,
+			record.PublishedAt,
 		); err != nil {
 			return err
 		}
@@ -163,8 +163,8 @@ func Run(ctx context.Context, args []string, service *tracker.Service, out io.Wr
 		return runList(ctx, args, service, out)
 	case "check":
 		return runCheck(ctx, args, service, out)
-	case "update":
-		return runUpdate(ctx, args, service, out)
+	case "history":
+		return runHistory(ctx, args, service, out)
 	case "delete":
 		return runDelete(ctx, args, service, out)
 	default:

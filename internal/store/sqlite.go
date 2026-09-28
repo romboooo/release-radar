@@ -25,7 +25,7 @@ type ReleaseRecord struct {
 	PublishedAt string
 }
 
-type UpdateRecord struct {
+type HistoryRecord struct {
 	Owner        string
 	Repo         string
 	TagName      string
@@ -71,7 +71,7 @@ func (s *Store) DeleteRepo(ctx context.Context, owner, repo string) error {
 	return nil
 }
 
-func (s *Store) ListUpdates(ctx context.Context) ([]UpdateRecord, error) {
+func (s *Store) ListHistory(ctx context.Context) ([]HistoryRecord, error) {
 
 	rows, err := s.db.QueryContext(
 		ctx,
@@ -81,15 +81,15 @@ func (s *Store) ListUpdates(ctx context.Context) ([]UpdateRecord, error) {
 		ORDER BY r.discovered_at DESC, r.github_id DESC`,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("list updates: %w", err)
+		return nil, fmt.Errorf("list history: %w", err)
 	}
 
 	defer rows.Close()
 
-	var records []UpdateRecord
+	var records []HistoryRecord
 
 	for rows.Next() {
-		var rec UpdateRecord
+		var rec HistoryRecord
 
 		if err := rows.Scan(
 			&rec.Owner,
@@ -99,14 +99,14 @@ func (s *Store) ListUpdates(ctx context.Context) ([]UpdateRecord, error) {
 			&rec.PublishedAt,
 			&rec.DiscoveredAt,
 		); err != nil {
-			return nil, fmt.Errorf("list updates: %w", err)
+			return nil, fmt.Errorf("list history: %w", err)
 		}
 
 		records = append(records, rec)
 
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("list updates: %w", err)
+		return nil, fmt.Errorf("list history: %w", err)
 	}
 	return records, nil
 }

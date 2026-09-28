@@ -23,8 +23,8 @@ type CheckResult struct {
 func (s *Service) Delete(ctx context.Context, owner, repo string) error {
 	return s.Store.DeleteRepo(ctx, owner, repo)
 }
-func (s *Service) ListUpdates(ctx context.Context) ([]store.UpdateRecord, error) {
-	return s.Store.ListUpdates(ctx)
+func (s *Service) ListHistory(ctx context.Context) ([]store.HistoryRecord, error) {
+	return s.Store.ListHistory(ctx)
 }
 
 func New(repoStore *store.Store) *Service {
