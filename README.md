@@ -2,7 +2,7 @@
 
 Minimal GitHub release tracker.
 
-![rradar TUI](docs/screenshot.png)
+![rradar TUI](image.png)
 
 ## Installation
 
