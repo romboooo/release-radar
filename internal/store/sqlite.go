@@ -25,6 +25,92 @@ type ReleaseRecord struct {
 	PublishedAt string
 }
 
+type UpdateRecord struct {
+	Owner        string
+	Repo         string
+	TagName      string
+	URL          string
+	PublishedAt  string
+	DiscoveredAt string
+}
+
+func (s *Store) DeleteRepo(ctx context.Context, owner, repo string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("DeleteRepo: %w", err)
+	}
+	defer tx.Rollback()
+
+	query1 := `DELETE FROM releases
+		WHERE repository_id = (
+			SELECT id FROM repositories WHERE owner = ? AND repo = ?
+	);`
+	query2 := `DELETE FROM repositories
+		WHERE owner = ? AND repo = ?;`
+
+	if _, err := tx.ExecContext(ctx, query1, owner, repo); err != nil {
+		return fmt.Errorf("DeleteRepo: %w", err)
+	}
+
+	result, err := tx.ExecContext(ctx, query2, owner, repo)
+	if err != nil {
+		return fmt.Errorf("DeleteRepo: %w", err)
+	}
+
+	affectedRows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("DeleteRepo: %w", err)
+	}
+	if affectedRows == 0 {
+		return fmt.Errorf("DeleteRepo: there was no subscribes woth repo %s and owner %s", repo, owner)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("DeleteRepo: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) ListUpdates(ctx context.Context) ([]UpdateRecord, error) {
+
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT p.owner, p.repo, r.tag_name, r.url, r.published_at, r.discovered_at
+		FROM releases AS r
+		JOIN repositories AS p ON p.id = r.repository_id
+		ORDER BY r.discovered_at DESC, r.github_id DESC`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list updates: %w", err)
+	}
+
+	defer rows.Close()
+
+	var records []UpdateRecord
+
+	for rows.Next() {
+		var rec UpdateRecord
+
+		if err := rows.Scan(
+			&rec.Owner,
+			&rec.Repo,
+			&rec.TagName,
+			&rec.URL,
+			&rec.PublishedAt,
+			&rec.DiscoveredAt,
+		); err != nil {
+			return nil, fmt.Errorf("list updates: %w", err)
+		}
+
+		records = append(records, rec)
+
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list updates: %w", err)
+	}
+	return records, nil
+}
+
 func (s *Store) SaveRelease(ctx context.Context, repositoryID int64, release ReleaseRecord) (bool, error) {
 	result, err := s.db.ExecContext(ctx, `
 		INSERT INTO releases (repository_id, github_id, tag_name, url, published_at)

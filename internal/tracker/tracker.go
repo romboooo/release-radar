@@ -18,6 +18,13 @@ type CheckResult struct {
 	IsNew      bool
 }
 
+func (s *Service) Delete(ctx context.Context, owner, repo string) error {
+	return s.Store.DeleteRepo(ctx, owner, repo)
+}
+func (s *Service) ListUpdates(ctx context.Context) ([]store.UpdateRecord, error) {
+	return s.Store.ListUpdates(ctx)
+}
+
 func New(repoStore *store.Store) *Service {
 	return &Service{Store: repoStore}
 }
