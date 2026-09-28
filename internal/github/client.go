@@ -15,16 +15,53 @@ type Release struct {
 	PublishedAt string `json:"published_at"`
 }
 
+func RepositoryExists(ctx context.Context, owner, repo string) (bool, error) {
+	if len(owner) <= 0 {
+		return false, fmt.Errorf("IsRepositoryExists: empty owner")
+	}
+
+	if len(repo) <= 0 {
+		return false, fmt.Errorf("IsRepositoryExists: empty repo")
+	}
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s",
+		owner, repo,
+	)
+
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	req, err := http.NewRequestWithContext(
+		ctx, http.MethodGet, url, nil,
+	)
+	if err != nil {
+		return false, fmt.Errorf("IsRepositoryExists: create request error %w", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("IsRepositoryExists: %w", err)
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusNotFound:
+		return false, nil
+	case http.StatusOK:
+		return true, nil
+	default:
+		return false, fmt.Errorf("check repository %s/%s: github returned %s", owner, repo, resp.Status)
+	}
+}
+
 func FetchLatestRelease(ctx context.Context, owner, repo string) (Release, error) {
 
 	if len(owner) <= 0 {
 		return Release{}, fmt.Errorf(
-			"empty owner")
+			"FetchLatestRelease: empty owner")
 	}
 
 	if len(repo) <= 0 {
 		return Release{}, fmt.Errorf(
-			"empty repo")
+			"FetchLatestRelease: empty repo")
 	}
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest",
 		owner, repo,

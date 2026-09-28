@@ -2,6 +2,7 @@ package tracker
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/romboooo/release-radar/internal/github"
@@ -93,6 +94,16 @@ func (s *Service) Check(ctx context.Context) ([]CheckResult, error) {
 }
 
 func (s *Service) AddRepository(ctx context.Context, owner, repo string) error {
+	isRepoExists, err := github.RepositoryExists(ctx, owner, repo)
+
+	if err != nil {
+		return err
+	}
+
+	if !isRepoExists {
+		return fmt.Errorf("repository %s/%s: not found", owner, repo)
+	}
+
 	return s.Store.AddRepository(ctx, owner, repo)
 }
 func (s *Service) ListRepositories(ctx context.Context) ([]store.Repository, error) {
