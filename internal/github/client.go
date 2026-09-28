@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -14,6 +15,57 @@ type Release struct {
 	TagName     string `json:"tag_name"`
 	HTMLURL     string `json:"html_url"`
 	PublishedAt string `json:"published_at"`
+}
+
+type Tag struct {
+	Name string `json:"name"`
+}
+
+var ErrReleaseNotFound = errors.New("latest release not found")
+
+func FetchTags(ctx context.Context, owner, repo string) ([]Tag, error) {
+	if len(owner) <= 0 {
+		return nil, fmt.Errorf("FetchTags: empty owner")
+	}
+
+	if len(repo) <= 0 {
+		return nil, fmt.Errorf("FetchTags: empty repo")
+	}
+	url := fmt.Sprintf(
+		"https://api.github.com/repos/%s/%s/tags?per_page=100",
+		owner, repo,
+	)
+
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	req, err := http.NewRequestWithContext(
+		ctx, http.MethodGet, url, nil,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("FetchTags: create request error %w", err)
+	}
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("FetchTags: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetch tags: github returned %s", resp.Status)
+	}
+
+	var tags []Tag
+
+	err = json.NewDecoder(resp.Body).Decode(&tags)
+
+	if err != nil {
+		return nil, fmt.Errorf("FetchTags: %w", err)
+	}
+
+	return tags, nil
 }
 
 func RepositoryExists(ctx context.Context, owner, repo string) (bool, error) {
@@ -82,7 +134,7 @@ func FetchLatestRelease(ctx context.Context, owner, repo string) (Release, error
 	}
 
 	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
-		req.Header.Set("Authorization", "Bearer"+token)
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	resp, err := client.Do(req)
 
@@ -90,6 +142,10 @@ func FetchLatestRelease(ctx context.Context, owner, repo string) (Release, error
 		return Release{}, fmt.Errorf("fetch release: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return Release{}, ErrReleaseNotFound
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		return Release{}, fmt.Errorf("github returned %s", resp.Status)

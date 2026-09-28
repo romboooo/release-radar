@@ -45,10 +45,11 @@ func runHistory(ctx context.Context, args []string, service *tracker.Service, ou
 	for _, record := range history {
 
 		if _, err := fmt.Fprintf(out,
-			"%s/%s %s %s %s\n",
+			"%s/%s %s %s %s %s\n",
 			record.Owner,
 			record.Repo,
 			record.TagName,
+			record.Source,
 			record.URL,
 			record.PublishedAt,
 		); err != nil {
@@ -118,6 +119,7 @@ func runCheck(ctx context.Context, args []string, service *tracker.Service, out 
 		}
 
 		if check.Err != nil {
+
 			_, err = fmt.Fprintf(
 				out,
 				"repo %s/%s error %v\n",
@@ -127,13 +129,19 @@ func runCheck(ctx context.Context, args []string, service *tracker.Service, out 
 			)
 
 		} else {
+			version := check.Release.TagName
+
+			if check.Source == "tag" {
+				version = check.Tag.Name
+			}
 
 			_, err = fmt.Fprintf(
 				out,
-				"%s/%s: %s (%s)\n",
+				"%s/%s: %s [%s] (%s)\n",
 				check.Repository.Owner,
 				check.Repository.Repo,
-				check.Release.TagName,
+				version,
+				check.Source,
 				status,
 			)
 
