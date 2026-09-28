@@ -4,7 +4,9 @@ import (
 	"context"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 
 	"github.com/romboooo/release-radar/internal/cli"
 	"github.com/romboooo/release-radar/internal/store"
@@ -30,7 +32,14 @@ func main() {
 	defer db.Close()
 
 	service := tracker.New(db)
-	if err := cli.Run(context.Background(), os.Args[1:], service, os.Stdout); err != nil {
+
+	ctx, stop := signal.NotifyContext(
+		context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+	defer stop()
+	if err := cli.Run(ctx, os.Args[1:], service, os.Stdout); err != nil {
 		log.Fatal(err)
 	}
 }

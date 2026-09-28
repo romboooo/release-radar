@@ -2,6 +2,7 @@ package tracker
 
 import (
 	"context"
+	"sync"
 
 	"github.com/romboooo/release-radar/internal/github"
 	"github.com/romboooo/release-radar/internal/store"
@@ -36,29 +37,56 @@ func (s *Service) Check(ctx context.Context) ([]CheckResult, error) {
 		return nil, err
 	}
 
-	var checks []CheckResult
+	checks := make([]CheckResult, len(repos))
 
-	for _, repo := range repos {
-		result := CheckResult{Repository: repo}
+	var wg sync.WaitGroup
+	slots := make(chan struct{}, 3)
 
-		release, err := github.FetchLatestRelease(ctx, repo.Owner, repo.Repo)
-		if err != nil {
-			result.Err = err
-			checks = append(checks, result)
+	for i, repo := range repos {
+		checks[i].Repository = repo
+
+		wg.Add(1)
+
+		go func(i int, repo store.Repository) {
+			defer wg.Done()
+
+			select {
+			case slots <- struct{}{}:
+			case <-ctx.Done():
+				checks[i].Err = ctx.Err()
+				return
+			}
+
+			defer func() {
+				<-slots
+			}()
+
+			release, err := github.FetchLatestRelease(ctx, repo.Owner, repo.Repo)
+			checks[i].Release = release
+			checks[i].Err = err
+
+		}(i, repo)
+	}
+
+	wg.Wait()
+
+	for i := range checks {
+
+		if checks[i].Err != nil {
 			continue
 		}
 
-		result.Release = release
-		record := store.ReleaseRecord{
-			GitHubID:    release.ID,
-			TagName:     release.TagName,
-			URL:         release.HTMLURL,
-			PublishedAt: release.PublishedAt,
-		}
+		release := checks[i].Release
 
-		result.IsNew, result.Err = s.Store.SaveRelease(ctx, repo.ID, record)
-		checks = append(checks, result)
+		checks[i].IsNew, checks[i].Err = s.Store.SaveRelease(ctx, checks[i].Repository.ID, store.ReleaseRecord{
+			GitHubID:    release.ID,
+			URL:         release.HTMLURL,
+			TagName:     release.TagName,
+			PublishedAt: release.PublishedAt,
+		})
+
 	}
+
 	return checks, nil
 }
 
