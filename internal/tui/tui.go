@@ -66,6 +66,8 @@ type app struct {
 	status     string
 	statusGood bool
 	input      string
+	checking   bool
+	spinner    int
 
 	repos   []store.Repository
 	history []store.HistoryRecord
@@ -257,16 +259,46 @@ func (a *app) runCheck(ctx context.Context) {
 	a.view = checksView
 	a.status = "checking repositories..."
 	a.statusGood = true
+	a.checking = true
 	a.render()
 
-	results, err := a.service.Check(ctx)
-	if err != nil {
-		a.setError(err.Error())
-		return
+	type checkResponse struct {
+		results []tracker.CheckResult
+		err     error
 	}
 
-	checks := make([]checkItem, 0, len(results))
-	for _, result := range results {
+	done := make(chan checkResponse, 1)
+	go func() {
+		results, err := a.service.Check(ctx)
+		done <- checkResponse{results: results, err: err}
+	}()
+
+	ticker := time.NewTicker(120 * time.Millisecond)
+	defer ticker.Stop()
+
+	var response checkResponse
+	for {
+		select {
+		case response = <-done:
+			a.checking = false
+			if response.err != nil {
+				a.setError(response.err.Error())
+				return
+			}
+			goto checked
+		case <-ticker.C:
+			a.spinner++
+			a.render()
+		case <-ctx.Done():
+			a.checking = false
+			a.setError(ctx.Err().Error())
+			return
+		}
+	}
+
+checked:
+	checks := make([]checkItem, 0, len(response.results))
+	for _, result := range response.results {
 		item := checkItem{
 			Repo:   result.Repository.Owner + "/" + result.Repository.Repo,
 			Source: result.Source,
@@ -293,19 +325,37 @@ func (a *app) runCheck(ctx context.Context) {
 }
 
 func (a *app) render() {
-	a.width, a.height = terminalSize(a.in)
-	if a.width < 64 {
-		a.width = 64
-	}
-	if a.height < 18 {
-		a.height = 18
-	}
+	screenWidth, screenHeight := terminalSize(a.in)
+	a.width = min(max(64, screenWidth-12), 96)
+	a.height = min(max(18, screenHeight-6), 28)
 
 	var buf bytes.Buffer
 	buf.WriteString("\x1b[H\x1b[2J")
-	buf.WriteString(a.header())
+	top := max(0, (screenHeight-a.height)/2)
+	left := max(0, (screenWidth-a.width)/2)
 
-	bodyHeight := a.height - 4
+	window := a.windowLines()
+	for row := 0; row < screenHeight; row++ {
+		if row < top || row >= top+len(window) {
+			buf.WriteString(backgroundLine(screenWidth))
+			buf.WriteString("\r\n")
+			continue
+		}
+
+		line := window[row-top]
+		buf.WriteString(backgroundLine(left))
+		buf.WriteString(line)
+		buf.WriteString(backgroundLine(max(0, screenWidth-left-visibleLen(line))))
+		buf.WriteString("\r\n")
+	}
+
+	fmt.Fprint(a.out, buf.String())
+}
+
+func (a *app) windowLines() []string {
+	rows := make([]string, 0, a.height)
+	rows = append(rows, a.header())
+	bodyHeight := a.height - 3
 	sidebarWidth := 22
 	mainWidth := a.width - sidebarWidth - 3
 
@@ -313,19 +363,16 @@ func (a *app) render() {
 	main := a.main(bodyHeight, mainWidth)
 
 	for i := 0; i < bodyHeight; i++ {
-		buf.WriteString(sidebar[i])
-		buf.WriteString(gray + " | " + reset)
-		buf.WriteString(main[i])
-		buf.WriteString("\r\n")
+		rows = append(rows, sidebar[i]+gray+" | "+reset+main[i])
 	}
 
-	buf.WriteString(a.footer())
-	fmt.Fprint(a.out, buf.String())
+	rows = append(rows, a.footerLines()...)
+	return rows
 }
 
 func (a *app) header() string {
 	title := " rradar "
-	return bold + title + reset + gray + strings.Repeat("-", max(1, a.width-visibleLen(title))) + reset + "\r\n"
+	return bold + title + reset + gray + strings.Repeat("-", max(1, a.width-visibleLen(title))) + reset
 }
 
 func (a *app) sidebar(height, width int) []string {
@@ -395,7 +442,11 @@ func (a *app) main(height, width int) []string {
 			rows[i+2] = a.selectLine(repo, line, width)
 		}
 	case checksView:
-		rows[0] = bold + pad("Latest check", width) + reset
+		title := "Latest check"
+		if a.checking {
+			title = title + " " + spinnerFrame(a.spinner)
+		}
+		rows[0] = bold + pad(title, width) + reset
 		if len(a.checks) == 0 {
 			rows[2] = gray + pad("Press c to check tracked repositories.", width) + reset
 			return rows
@@ -416,7 +467,7 @@ func (a *app) main(height, width int) []string {
 	return rows
 }
 
-func (a *app) footer() string {
+func (a *app) footerLines() []string {
 	var left string
 	if a.mode == addMode {
 		left = "add: " + a.input
@@ -431,7 +482,10 @@ func (a *app) footer() string {
 		color = green
 	}
 	line := color + truncate(left, a.width) + reset
-	return gray + strings.Repeat("-", a.width) + reset + "\r\n" + pad(line, a.width) + "\r\n"
+	return []string{
+		gray + strings.Repeat("-", a.width) + reset,
+		pad(line, a.width),
+	}
 }
 
 func (a *app) selectLine(idx int, line string, width int) string {
@@ -455,6 +509,11 @@ func checkLine(item checkItem) string {
 		status = green + "new" + reset
 	}
 	return fmt.Sprintf("%s  %s  %s%s%s  %s", item.Repo, item.Tag, cyan, item.Source, reset, status)
+}
+
+func spinnerFrame(frame int) string {
+	frames := []string{"|", "/", "-", "\\"}
+	return gray + frames[frame%len(frames)] + reset
 }
 
 func historyLine(record store.HistoryRecord) string {
@@ -634,6 +693,10 @@ func pad(value string, width int) string {
 		return truncate(value, width)
 	}
 	return value + strings.Repeat(" ", width-length)
+}
+
+func backgroundLine(width int) string {
+	return strings.Repeat(" ", max(0, width))
 }
 
 func truncate(value string, width int) string {
