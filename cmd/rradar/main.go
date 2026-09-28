@@ -11,6 +11,7 @@ import (
 	"github.com/romboooo/release-radar/internal/cli"
 	"github.com/romboooo/release-radar/internal/store"
 	"github.com/romboooo/release-radar/internal/tracker"
+	"github.com/romboooo/release-radar/internal/tui"
 )
 
 func main() {
@@ -39,6 +40,12 @@ func main() {
 		syscall.SIGTERM,
 	)
 	defer stop()
+	if len(os.Args) == 1 {
+		if err := tui.Run(ctx, service); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	if err := cli.Run(ctx, os.Args[1:], service, os.Stdout); err != nil {
 		log.Fatal(err)
 	}
