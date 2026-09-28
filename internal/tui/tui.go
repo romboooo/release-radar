@@ -225,9 +225,7 @@ func (a *app) refreshCurrent(ctx context.Context) {
 	case repositoriesView:
 		a.refreshRepos(ctx)
 	case checksView:
-		if len(a.checks) == 0 {
-			a.runCheck(ctx)
-		}
+		a.setOK("press c to check tracked repositories")
 	case historyView:
 		a.refreshHistory(ctx)
 	}
@@ -371,7 +369,7 @@ func (a *app) windowLines() []string {
 }
 
 func (a *app) header() string {
-	title := " rradar "
+	title := " rradar by rmb"
 	return bold + title + reset + gray + strings.Repeat("-", max(1, a.width-visibleLen(title))) + reset
 }
 
