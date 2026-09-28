@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -34,6 +35,9 @@ func RepositoryExists(ctx context.Context, owner, repo string) (bool, error) {
 	)
 	if err != nil {
 		return false, fmt.Errorf("IsRepositoryExists: create request error %w", err)
+	}
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
 	resp, err := client.Do(req)
@@ -77,6 +81,9 @@ func FetchLatestRelease(ctx context.Context, owner, repo string) (Release, error
 		return Release{}, fmt.Errorf("create request: %w", err)
 	}
 
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		req.Header.Set("Authorization", "Bearer"+token)
+	}
 	resp, err := client.Do(req)
 
 	if err != nil {
